@@ -1,134 +1,32 @@
-<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111827"><title>TSURUKAN CLUB</title><style>:root{font-family:system-ui,-apple-system,sans-serif;color:#f9fafb;background:#111827}*{box-sizing:border-box}body{margin:0}header{padding:18px 16px 10px;background:#111827;position:sticky;top:0;z-index:2}h1{margin:0;font-size:25px;letter-spacing:2px}small{color:#f87171}nav{display:flex;gap:6px;overflow:auto;padding:12px 0}button{cursor:pointer;background:#b91c1c;color:white;border:0;border-radius:10px;padding:12px;font-weight:650}nav button{background:#374151;white-space:nowrap}nav button.active{background:#b91c1c}main{padding:14px 16px 100px;max-width:750px;margin:auto}.card{background:#1f2937;border-radius:12px;padding:15px;margin:10px 0;overflow-wrap:anywhere}.card strong{display:block;color:#fca5a5;margin-bottom:7px}input,textarea,select{display:block;width:100%;font:inherit;border-radius:9px;border:0;padding:13px;margin:10px 0;background:white;color:#111827}textarea{min-height:75px}.muted{color:#cbd5e1}#status{color:#fca5a5;white-space:pre-wrap}#auth{max-width:500px;margin:35px auto;padding:20px}.row{display:flex;gap:8px;align-items:center}.row>*{min-width:0}.row input{flex:1}.hidden{display:none!important}footer{font-size:12px;color:#9ca3af;margin:30px 0}label{display:block;margin-top:12px}h2{font-size:20px}</style></head><body><header><h1>TSURUKAN <small>CLUB</small></h1><div id="who" class="muted"></div><nav id="nav" class="hidden"></nav></header><section id="auth"><h2>Logowanie do klubu</h2><p class="muted">Zaloguj się kontem utworzonym w Supabase.</p><input id="email" type="email" autocomplete="username" placeholder="Adres e-mail"><input id="password" type="password" autocomplete="current-password" placeholder="Hasło"><button id="login">Zaloguj</button><p id="authstatus"></p></section><main id="app" class="hidden"><h2 id="heading"></h2><div id="content"></div><p id="status"></p><footer>TSURUKAN CLUB • Wersja testowa. Płatności online nie są aktywne.</footer></main><script>
-// PUBLICZNE dane projektu Supabase — uzupełnij przed publikacją.
-const SUPABASE_URL='https://vqvtoybgtjqoszhbviki.supabase.co';const SUPABASE_KEY='sb_publishable_MhZ2kl3FL5oxFcESt2Z5XQ_RbSFQIDi';
-const ready=SUPABASE_URL.startsWith('https://')&&!SUPABASE_KEY.startsWith('WPISZ_');
-const $=id=>document.getElementById(id);let token='',user=null,profile=null,tab='Czat',poll=null;
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function info(t){$('status').textContent=t||''}function authInfo(t){$('authstatus').textContent=t||''}
-async function api(path,options={}){const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,{...options,headers:{apikey:SUPABASE_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json',...(options.headers||{})}});if(!r.ok)throw Error((await r.text()).slice(0,250));if(r.status===204)return null;return r.json()}
-async function auth(path,body){const r=await fetch(SUPABASE_URL+'/auth/v1/'+path,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.msg||j.error_description||j.message||'Błąd logowania');return j}
-function card(title,detail){return `<div class="card"><strong>${esc(title)}</strong>${esc(detail)}</div>`}
-function show(){ $('auth').classList.toggle('hidden',!!user);$('app').classList.toggle('hidden',!user);$('nav').classList.toggle('hidden',!user);$('who').textContent=user?(profile?.full_name||user.email)+' · '+(profile?.role||'member'):'';if(!user)return;const tabs=['Czat','Treningi','Wydarzenia','Płatności','Profil',...(profile?.role==='admin'||profile?.role==='trainer'?['Zarządzanie']:[])];$('nav').innerHTML=tabs.map(x=>`<button data-tab="${x}" class="${tab===x?'active':''}">${x}</button>`).join('');document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;show();load()});$('heading').textContent=tab;$('content').innerHTML='<p class="muted">Ładowanie...</p>'}
-async function login(){if(!ready){authInfo('Najpierw wpisz Project URL i Publishable key w pliku index.html.');return}authInfo('Logowanie...');try{const j=await auth('token?grant_type=password',{email:$('email').value.trim(),password:$('password').value});token=j.access_token;user=j.user;profile=await api('profiles?select=id,full_name,role&id=eq.'+encodeURIComponent(user.id)).then(x=>x[0]);if(!profile)throw Error('Brak profilu użytkownika.');authInfo('');show();await load();clearInterval(poll);poll=setInterval(()=>{if(tab==='Czat'&&user)load(true)},7000)}catch(e){token='';user=null;authInfo(e.message);show()}}
-$('login').onclick=login;
-async function joinTraining(id){
-  if(!user){alert('Najpierw się zaloguj');return;}
-  try{
-    await api('training_members',{
-      method:'POST',
-      body:JSON.stringify({
-        training_id:id,
-        user_id:user.id,
-        attended:false
-      })
-    });
-    alert('Zapisano na trening!');
-  }catch(e){
-    alert('Nie udało się zapisać: '+e.message);
-  }
-}
-async function load(silent=false){if(!user)return;try{if(tab==='Czat'){const data=await api('messages?select=id,sender_id,content,created_at&order=created_at.desc&limit=100');$('content').innerHTML=data.reverse().map(m=>card(m.sender_id===user.id?'Ja':'Klubowicz '+m.sender_id.slice(0,6),m.content)).join('')+'<textarea id="msg" maxlength="2000" placeholder="Wiadomość do klubu"></textarea><button id="send">Wyślij</button>';$('send').onclick=send} else if(tab==='Treningi'){const d=await api('trainings?select=id,title,starts_at,location&order=starts_at.asc');$('content').innerHTML=d.map(x=>card(x.title,new Date(x.starts_at).toLocaleString('pl-PL')+' · '+(x.location||'')+'<button onclick="joinTraining(\''+x.id+'\')">Zapisz się</button>')).join('')||'<p>Brak treningów.</p>'}
-
-
-else if(tab==='Wydarzenia'){const d=await api('events?select=title,category,starts_at,location&order=starts_at.asc');$('content').innerHTML=d.map(x=>card(x.title,x.category+' • '+new Date(x.starts_at).toLocaleString('pl-PL')+' • '+(x.location||''))).join('')||'<p>Brak wydarzeń.</p>'}
-else if(tab==='Płatności'){const d=await api('payments?select=title,amount,currency,status,due_date&user_id=eq.'+encodeURIComponent(user.id));$('content').innerHTML=d.map(x=>card(x.title,x.amount+' '+x.currency+' • '+x.status+' • termin: '+(x.due_date||'—'))).join('')||'<p>Brak przypisanych płatności.</p>'}
-else if(tab==='Profil'){$('content').innerHTML=card('Konto',user.email+' • '+profile.role)+'<button id="logout">Wyloguj</button>';$('logout').onclick=()=>{token='';user=null;profile=null;clearInterval(poll);show()}}
-else if(tab==='Zarządzanie'){const staff=profile?.role==='admin'||profile?.role==='trainer';$('content').innerHTML=staff?'<p>Dodaj wydarzenie klubowe:</p><input id="title" placeholder="Nazwa wydarzenia"><label>Data i godzina<input id="date" type="datetime-local"></label><input id="location" placeholder="Miejsce"><select id="category"><option value="event">Wydarzenie</option><option value="seminar">Staż</option><option value="exam">Egzamin</option></select><button id="add">Dodaj wydarzenie</button>':'<p>Brak uprawnień.</p>';if(staff)$('add').onclick=addEvent}info('')}catch(e){if(!silent)info('Błąd: '+e.message)}
-if(tab==='Zarządzanie' && profile?.role==='admin'){
-  const panel=document.createElement('div');
-  panel.id='pendingMembers';
-  panel.innerHTML='<h3>Członkowie oczekujący</h3><p>Ładowanie...</p>';
-  $('content').appendChild(panel);
-  loadPendingMembers();
-}
-}
-async function loadPendingMembers(){
-  const panel = document.getElementById('pendingMembers');
-  if (!panel || profile?.role !== 'admin') return;
-
-  try {
-    const members = await api(
-      'profiles?approved=eq.false&select=id,full_name,role'
-    );
-
-    if (!members.length) {
-      panel.innerHTML = '<h3>Członkowie oczekujący</h3><p>Brak oczekujących członków.</p>';
-      return;
-    }
-
-    panel.innerHTML = '<h3>Członkowie oczekujący</h3>';
-
-    members.forEach(member => {
-      const item = document.createElement('div');
-      const name = document.createElement('span');
-      const button = document.createElement('button');
-
-      name.textContent = member.full_name || 'Bez imienia';
-      button.textContent = 'Zatwierdź';
-      button.onclick = () => approveMember(member.id);
-
-      item.append(name, ' ', button);
-      panel.appendChild(item);
-    });
-  } catch (e) {
-    panel.textContent = 'Błąd pobierania członków: ' + e.message;
-  }
-}  
-async function approveMember(id){
-  if(profile?.role !== 'admin') return;
-  if(!confirm('Zatwierdzić tego członka?')) return;
-  try{
-    await api('profiles?id=eq.' + encodeURIComponent(id), {
-      method:'PATCH',
-      headers:{Prefer:'return=minimal'},
-      body:JSON.stringify({approved:true})
-    });
-    alert('Członek zatwierdzony!');
-    await load();
-  }catch(e){
-    alert('Błąd zatwierdzania: ' + e.message);
-  }
-}
-async function send(){const el=$('msg'),content=el.value.trim();if(!content)return;try{await api('messages',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({sender_id:user.id,content})});await load()}catch(e){info('Nie wysłano: '+e.message)}}
-async function addEvent(){const title=$('title').value.trim(),date=$('date').value;if(!title||!date){info('Wpisz nazwę i datę.');return}try{await api('events',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify({title,starts_at:new Date(date.replace(' ', 'T')).toISOString(),location:$('location').value,category
-:$('category').value})});info('Wydarzenie dodane.');await load()}catch(e){info('Nie dodano: '+e.message)}}
-if(!ready)authInfo('Aplikacja wymaga wpisania Project URL i Publishable key przed publikacją.');
-async function resetPassword() {
-  const hash = new URLSearchParams(
-    window.location.hash.substring(1)
-  );
-
-  const token = hash.get('access_token');
-  const type = hash.get('type');
-
-  if (!token || type !== 'recovery') return;
-
-  const password = prompt('Wpisz nowe hasło (minimum 6 znaków):');
-  if (!password) return;
-
-  try {
-    const response = await fetch(
-      SUPABASE_URL + '/auth/v1/user',
-      {
-        method: 'PUT',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ password })
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-
-    alert('Hasło zmienione! Możesz się zalogować.');
-    history.replaceState(null, '', window.location.pathname);
-  } catch (e) {
-    alert('Nie udało się zmienić hasła: ' + e.message);
-  }
-}
-
-resetPassword();</script></body></html>
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>TSURUKAN CLUB</title><style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#f7f8fb;background:#111827}*{box-sizing:border-box}body{margin:0}header,main,footer{max-width:900px;margin:auto;padding:20px}header{padding-top:32px}h1{margin:0;letter-spacing:2px}h1 span{color:#ef7777}small,.muted{color:#aab2c2}nav{display:flex;gap:8px;overflow:auto;padding:14px 0}button,input,select,textarea{font:inherit;border-radius:12px;padding:12px;border:1px solid #536074}button{background:#374151;color:white;cursor:pointer;font-weight:650}button.primary,.active{background:#aa302b;border-color:#aa302b}button:disabled{opacity:.5}input,select,textarea{background:#fff;color:#172033;width:100%;margin:6px 0 12px}label{display:block;margin-top:8px}section,.card{background:#1f2937;border-radius:16px;padding:18px;margin:12px 0}.card{background:#293448}p{line-height:1.5}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.hidden{display:none!important}.status{padding:12px;border-radius:10px;background:#27344a;margin:12px 0;white-space:pre-wrap}.danger{background:#7f2424}.ok{background:#20523b}a{color:#b9d5ff}footer{color:#aab2c2;font-size:13px}.pill{font-size:12px;background:#45536b;border-radius:100px;padding:4px 10px}.action{margin-top:8px}
+</style></head><body><header><h1>TSURUKAN <span>CLUB</span></h1><div id="identity" class="muted">Panel klubowy</div></header><main><div id="notice" class="status hidden" role="status"></div><section id="setup" class="hidden"><h2>Konfiguracja</h2><p>Uzupełnij w pliku <code>index.html</code> wartości SUPABASE_URL i SUPABASE_ANON_KEY. Następnie wykonaj plik SQL w panelu Supabase.</p></section><section id="auth"><h2>Logowanie</h2><label>E-mail<input id="email" type="email" autocomplete="email"></label><label>Hasło<input id="password" type="password" autocomplete="current-password"></label><div class="row"><button class="primary" id="login">Zaloguj</button><button id="register">Zarejestruj się</button></div><button id="forgot" class="action">Wyślij link do zmiany hasła</button><p class="muted">Nowe konta wymagają zatwierdzenia przez administratora.</p></section><div id="app" class="hidden"><nav id="tabs"></nav><div id="content"></div><button id="logout">Wyloguj</button></div></main><footer>TSURUKAN CLUB • Wersja testowa • Płatności online nie są aktywne.</footer><script>
+// PUBLICZNE dane Supabase (Project URL i anon/public key). Nigdy nie wpisuj service_role key.
+const SUPABASE_URL='WPISZ_SUPABASE_URL';
+const SUPABASE_ANON_KEY='WPISZ_SUPABASE_ANON_KEY';
+const $=id=>document.getElementById(id), configured=SUPABASE_URL.startsWith('https://')&&!SUPABASE_ANON_KEY.startsWith('WPISZ');
+let session=null,profile=null,tab='Treningi';const admin=()=>profile?.role==='admin';const staff=()=>['admin','trainer'].includes(profile?.role);
+function notice(s,error=false){$('notice').textContent=s;$('notice').className='status '+(error?'danger':'ok')}
+function escapeHTML(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function request(path,{method='GET',body,auth=true,headers={}}={}){const h={'apikey':SUPABASE_ANON_KEY,...headers};if(auth&&session?.access_token)h.Authorization='Bearer '+session.access_token;if(body!==undefined)h['Content-Type']='application/json';const r=await fetch(SUPABASE_URL+path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body)});let data=await r.text();try{data=data?JSON.parse(data):null}catch{}if(!r.ok)throw Error(data?.message||data?.error_description||data?.msg||JSON.stringify(data)||'Błąd '+r.status);return data}
+const rest=(table,query='',options={})=>request('/rest/v1/'+table+'?'+query,{...options,headers:{Accept:'application/json',...options.headers}});
+function saveSession(s){session=s;sessionStorage.setItem('tsurukan_session',JSON.stringify(s))}
+async function refresh(){if(!session?.refresh_token)return false;try{const s=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:session.refresh_token},auth:false});saveSession(s);return true}catch{saveSession(null);return false}}
+async function withAuth(fn){if(session?.expires_at&&session.expires_at*1000<Date.now()+60000)await refresh();try{return await fn()}catch(e){if(/JWT expired|invalid JWT/i.test(e.message)&&await refresh())return fn();throw e}}
+async function signIn(){const data=await request('/auth/v1/token?grant_type=password',{method:'POST',body:{email:$('email').value.trim(),password:$('password').value},auth:false});saveSession({...data,expires_at:Math.floor(Date.now()/1000)+data.expires_in});$('password').value='';await loadUser()}
+async function register(){const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<8)throw Error('Podaj e-mail i hasło (co najmniej 8 znaków).');const full_name=prompt('Imię i nazwisko:');if(!full_name?.trim())return;await request('/auth/v1/signup',{method:'POST',body:{email,password,data:{full_name:full_name.trim()}},auth:false});notice('Rejestracja wysłana. Potwierdź e-mail, jeśli Supabase tego wymaga, i poczekaj na zatwierdzenie konta.')}
+async function forgot(){const email=$('email').value.trim();if(!email)throw Error('Najpierw wpisz adres e-mail.');await request('/auth/v1/recover',{method:'POST',body:{email},auth:false});notice('Jeśli konto istnieje, wysłano wiadomość z instrukcją zmiany hasła.')}
+function logout(){saveSession(null);profile=null;$('app').classList.add('hidden');$('auth').classList.remove('hidden');$('identity').textContent='Panel klubowy'}
+async function loadUser(){if(!session?.access_token){logout();return}const u=await withAuth(()=>request('/auth/v1/user'));const rows=await withAuth(()=>rest('profiles','id=eq.'+encodeURIComponent(u.id)+'&select=*'));profile=rows?.[0];if(!profile)throw Error('Profil nie został jeszcze utworzony. Sprawdź konfigurację bazy.');$('identity').textContent=(profile.full_name||u.email)+' • '+profile.role;$('auth').classList.add('hidden');$('app').classList.remove('hidden');if(!profile.approved){$('tabs').innerHTML='';$('content').innerHTML='<section><h2>Oczekiwanie na zatwierdzenie</h2><p>Administrator musi zaakceptować Twoje konto. Po zatwierdzeniu odśwież stronę.</p></section>';return}await render()}
+const tabs=['Treningi','Wydarzenia','Płatności','Profil','Zarządzanie'];
+async function render(){if(!profile?.approved)return loadUser();$('tabs').innerHTML=tabs.filter(t=>t!=='Zarządzanie'||staff()).map(t=>`<button data-tab="${t}" class="${t===tab?'active':''}">${t}</button>`).join('');$('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render().catch(fail)});$('content').innerHTML='<section>Ładowanie…</section>';await withAuth(async()=>{if(tab==='Treningi')await trainings();if(tab==='Wydarzenia')await events();if(tab==='Płatności')await payments();if(tab==='Profil')await profileView();if(tab==='Zarządzanie')await manage()})}
+function card(title,detail,extra=''){return `<div class="card"><strong>${escapeHTML(title)}</strong><p>${escapeHTML(detail)}</p>${extra}</div>`}
+async function trainings(){const data=await rest('trainings','select=*&order=starts_at.asc');const joins=await rest('training_members','select=training_id&user_id=eq.'+encodeURIComponent(profile.id));const joined=new Set(joins.map(x=>x.training_id));$('content').innerHTML='<h2>Treningi</h2>'+(data.map(t=>card(t.title,new Date(t.starts_at).toLocaleString('pl-PL')+' • '+(t.location||''),`<button data-join="${escapeHTML(t.id)}" ${joined.has(t.id)?'disabled':''}>${joined.has(t.id)?'Zapisano':'Zapisz się'}</button>`)).join('')||'<p>Brak treningów.</p>');$('content').querySelectorAll('[data-join]').forEach(b=>b.onclick=()=>run(async()=>{await rest('training_members','',{method:'POST',body:{training_id:b.dataset.join,user_id:profile.id},headers:{Prefer:'return=minimal'}});notice('Zapisano na trening.');await render()}))}
+async function events(){const data=await rest('events','select=*&order=starts_at.asc');$('content').innerHTML='<h2>Wydarzenia</h2>'+(data.map(e=>card(e.title,new Date(e.starts_at).toLocaleString('pl-PL')+' • '+(e.location||'')+' • '+(e.category||''))).join('')||'<p>Brak wydarzeń.</p>')}
+async function payments(){const data=await rest('payments','select=*&user_id=eq.'+encodeURIComponent(profile.id)+'&order=created_at.desc');$('content').innerHTML='<h2>Moje płatności</h2><p class="muted">To ewidencja składek, nie bramka płatnicza.</p>'+(data.map(p=>card(p.description,Number(p.amount).toFixed(2)+' PLN • '+(p.status==='paid'?'Opłacone':'Do zapłaty'))).join('')||'<p>Brak przypisanych płatności.</p>')}
+async function profileView(){$('content').innerHTML=`<section><h2>Profil</h2><p>${escapeHTML(profile.full_name)}</p><p>Status: ${profile.approved?'Aktywny':'Oczekujący'}</p><label>Nowe hasło<input type="password" id="newpass" autocomplete="new-password" minlength="8"></label><button id="changepass">Zmień hasło</button></section>`;$('changepass').onclick=()=>run(async()=>{if($('newpass').value.length<8)throw Error('Hasło musi mieć minimum 8 znaków.');await request('/auth/v1/user',{method:'PUT',body:{password:$('newpass').value}});$('newpass').value='';notice('Hasło zmienione.')})}
+async function manage(){if(!staff())return;let html='<h2>Zarządzanie</h2>';if(admin()){const pending=await rest('profiles','select=id,full_name,approved,role&approved=eq.false&order=created_at.asc');html+='<section><h3>Członkowie oczekujący</h3>'+(pending.map(p=>card(p.full_name,'Oczekuje na akceptację',`<button data-approve="${escapeHTML(p.id)}">Zatwierdź</button>`)).join('')||'<p>Brak oczekujących członków.</p>')+'</section>'}html+=`<section><h3>Dodaj trening</h3><form id="trainingform"><input name="title" placeholder="Nazwa treningu" required><label>Data i godzina<input name="starts_at" type="datetime-local" required></label><input name="location" placeholder="Miejsce"><button class="primary">Dodaj trening</button></form></section><section><h3>Dodaj wydarzenie</h3><form id="eventform"><input name="title" placeholder="Nazwa wydarzenia" required><label>Data i godzina<input name="starts_at" type="datetime-local" required></label><input name="location" placeholder="Miejsce"><select name="category"><option value="event">Wydarzenie</option><option value="seminar">Staż</option><option value="exam">Egzamin</option></select><button class="primary">Dodaj wydarzenie</button></form></section>`;if(admin())html+=`<section><h3>Dodaj należność</h3><form id="paymentform"><label>Członek<select name="user_id" id="memberselect" required></select></label><input name="description" placeholder="Opis składki" required><input name="amount" type="number" min="0.01" step="0.01" placeholder="Kwota PLN" required><button class="primary">Dodaj należność</button></form><h3>Oznacz wpłatę</h3><div id="unpaid"></div></section>`;$('content').innerHTML=html;if(admin()){$('content').querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>run(async()=>{if(!confirm('Zatwierdzić członka?'))return;await rest('profiles','id=eq.'+encodeURIComponent(b.dataset.approve),{method:'PATCH',body:{approved:true},headers:{Prefer:'return=minimal'}});notice('Członek zatwierdzony.');await render()}));const members=await rest('profiles','select=id,full_name&approved=eq.true&order=full_name.asc');$('memberselect').innerHTML=members.map(m=>`<option value="${escapeHTML(m.id)}">${escapeHTML(m.full_name)}</option>`).join('');const unpaid=await rest('payments','select=*&status=eq.unpaid&order=created_at.desc');$('unpaid').innerHTML=unpaid.map(p=>card(p.description,Number(p.amount).toFixed(2)+' PLN',`<button data-paid="${escapeHTML(p.id)}">Oznacz jako opłacone</button>`)).join('')||'<p>Brak nieopłaconych należności.</p>';$('unpaid').querySelectorAll('[data-paid]').forEach(b=>b.onclick=()=>run(async()=>{if(!confirm('Potwierdzasz otrzymanie wpłaty?'))return;await rest('payments','id=eq.'+encodeURIComponent(b.dataset.paid),{method:'PATCH',body:{status:'paid'},headers:{Prefer:'return=minimal'}});notice('Wpłata oznaczona jako opłacona.');await render()}))}for(const [id,table] of [['trainingform','trainings'],['eventform','events'],['paymentform','payments']]){const f=$(id);if(!f)continue;f.onsubmit=e=>{e.preventDefault();run(async()=>{const d=Object.fromEntries(new FormData(f));if(d.starts_at)d.starts_at=new Date(d.starts_at).toISOString();if(d.amount)d.amount=Number(d.amount);await rest(table,'',{method:'POST',body:d,headers:{Prefer:'return=minimal'}});notice('Zapisano.');await render()})}}}
+function fail(e){notice(e?.message||String(e),true)}async function run(fn){try{await fn()}catch(e){fail(e)}}$('login').onclick=()=>run(signIn);$('register').onclick=()=>run(register);$('forgot').onclick=()=>run(forgot);$('logout').onclick=logout;if(!configured){$('setup').classList.remove('hidden');$('auth').classList.add('hidden')}else{try{const s=JSON.parse(sessionStorage.getItem('tsurukan_session')||'null');if(s){session=s;run(loadUser)}}catch{}}
+// Obsługa linku resetowania hasła z Supabase (implicit flow)
+if(configured&&location.hash.includes('access_token=')){const h=new URLSearchParams(location.hash.slice(1));const access_token=h.get('access_token');if(access_token){saveSession({access_token,refresh_token:h.get('refresh_token'),expires_at:Math.floor(Date.now()/1000)+Number(h.get('expires_in')||3600)});history.replaceState(null,'',location.pathname);run(async()=>{const p=prompt('Wpisz nowe hasło (minimum 8 znaków):');if(p?.length>=8){await request('/auth/v1/user',{method:'PUT',body:{password:p}});notice('Hasło zmienione.')}await loadUser()})}}
+</script></body></html>
